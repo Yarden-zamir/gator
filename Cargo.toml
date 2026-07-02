@@ -1,10 +1,15 @@
 [package]
 name = "gator"
-version.workspace = true
-edition.workspace = true
+version = "0.1.0"
+edition = "2021"
+description = "Shared Rust TUI and tooling primitives for the gator app family"
+license = "MIT"
+repository = "https://github.com/Yarden-zamir/gator"
+keywords = ["tui", "ratatui", "cli", "terminal"]
+categories = ["command-line-interface"]
 
 [dependencies]
-crossterm.workspace = true
-libc.workspace = true
-ratatui.workspace = true
-tui-input.workspace = true
+crossterm = "0.29"
+libc = "0.2"
+ratatui = "0.30"
+tui-input = { version = "0.15", features = ["crossterm"] }
