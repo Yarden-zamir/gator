@@ -1,0 +1,10 @@
+[package]
+name = "gator"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+crossterm.workspace = true
+libc.workspace = true
+ratatui.workspace = true
+tui-input.workspace = true
