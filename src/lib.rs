@@ -1,11 +1,4 @@
-use std::{
-    env,
-    error::Error,
-    fs, io,
-    io::Write,
-    path::Path,
-    process::{Command, Stdio},
-};
+use std::{env, error::Error, fs, io, path::Path, process::Command};
 
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
@@ -123,6 +116,8 @@ pub fn run_command_output(
 pub fn copy_to_clipboard(value: &str) -> AppResult<()> {
     #[cfg(target_os = "macos")]
     {
+        use std::{io::Write, process::Stdio};
+
         let mut child = Command::new("pbcopy").stdin(Stdio::piped()).spawn()?;
         let Some(stdin) = child.stdin.as_mut() else {
             return Err("failed to open pbcopy stdin".into());
