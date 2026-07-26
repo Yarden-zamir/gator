@@ -1,6 +1,8 @@
 # gator
 
-Shared Rust TUI and tooling primitives for the gator app family.
+🐊 Shared Rust TUI and tooling primitives for the gator app family.
+
+Nerd Font is recommended for all gator-family CLIs so built-in icons render correctly.
 
 `gator` contains generic infrastructure: terminal setup, selection output, clipboard support, command output helpers, fuzzy matching, and small TUI helpers.
 
