@@ -319,6 +319,86 @@ pub fn format_key_code(code: KeyCode) -> String {
     }
 }
 
+/// Render a chord for on-screen help: `"ctrl+y"` becomes `"Ctrl+Y"`.
+pub fn format_chord_label(chord: KeyChord) -> String {
+    let canonical = chord.as_str();
+    let has_modifiers = canonical.contains('+');
+    canonical
+        .split('+')
+        .map(|part| match part {
+            "ctrl" => "Ctrl".to_string(),
+            "alt" => "Alt".to_string(),
+            "shift" => "Shift".to_string(),
+            "super" => "Super".to_string(),
+            "enter" => "Enter".to_string(),
+            "space" => "Space".to_string(),
+            "tab" => "Tab".to_string(),
+            "backtab" => "BackTab".to_string(),
+            "esc" => "Esc".to_string(),
+            "backspace" => "Backspace".to_string(),
+            "delete" => "Delete".to_string(),
+            "insert" => "Insert".to_string(),
+            "left" => "Left".to_string(),
+            "right" => "Right".to_string(),
+            "up" => "Up".to_string(),
+            "down" => "Down".to_string(),
+            "home" => "Home".to_string(),
+            "end" => "End".to_string(),
+            "pageup" => "PageUp".to_string(),
+            "pagedown" => "PageDown".to_string(),
+            _ if part
+                .strip_prefix('f')
+                .is_some_and(|number| number.bytes().all(|byte| byte.is_ascii_digit())) =>
+            {
+                part.to_ascii_uppercase()
+            }
+            _ if has_modifiers && part.chars().count() == 1 => part.to_ascii_uppercase(),
+            _ => part.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Build a keymap layer from configured `context → { chord = target }` tables.
+///
+/// Chords and targets are parsed and canonicalized; two chords that normalize
+/// to the same binding inside one context are rejected so a config typo cannot
+/// silently shadow itself.
+pub fn layer_from_tables<C, A>(
+    tables: impl IntoIterator<Item = (C, BTreeMap<String, String>)>,
+) -> Result<Keymap<C, A>, String>
+where
+    C: BindingContext,
+    A: CoreAction,
+{
+    let mut keymap = Keymap::default();
+    for (context, table) in tables {
+        let mut seen = std::collections::HashSet::new();
+        for (raw_chord, raw_target) in table {
+            let chord = KeyChord::parse(&raw_chord).map_err(|error| {
+                format!(
+                    "Invalid key chord {raw_chord:?} in [keybindings.{}]: {error}",
+                    context.as_str()
+                )
+            })?;
+            if !seen.insert(chord) {
+                return Err(format!(
+                    "Duplicate canonical key chord {chord} in [keybindings.{}]",
+                    context.as_str()
+                ));
+            }
+            let target = BindingTarget::<A>::parse(&raw_target).map_err(|error| {
+                format!(
+                    "Invalid keybinding target {raw_target:?} in [keybindings.{}]: {error}",
+                    context.as_str()
+                )
+            })?;
+            keymap.set(context, Binding::new(chord, target));
+        }
+    }
+    Ok(keymap)
+}
+
 /// A single `chord → target` mapping.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Binding<A> {

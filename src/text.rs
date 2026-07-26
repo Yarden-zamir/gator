@@ -5,9 +5,10 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
 };
+use tui_input::{Input, InputRequest};
 
 /// Truncate `value` to at most `max` characters, replacing the overflow with a
 /// single `…`. Returns an empty string when `max` is 0.
@@ -125,6 +126,92 @@ pub fn render_progress_bar(
     ])
 }
 
+/// Number of rendered lines in `text`.
+pub fn text_line_count(text: &Text) -> usize {
+    text.lines.len()
+}
+
+/// Insert pasted `value` into `input`, dropping carriage returns so bracketed
+/// paste of multi-line text does not split the field.
+pub fn insert_paste(input: &mut Input, value: &str) {
+    for ch in value.chars().filter(|ch| *ch != '\r') {
+        input.handle(InputRequest::InsertChar(ch));
+    }
+}
+
+/// Scroll offset that keeps `selected` visible in a `height`-row window over
+/// `total` items, moving as little as possible.
+pub fn list_window_offset(selected: usize, offset: usize, height: usize, total: usize) -> usize {
+    if height == 0 || total == 0 {
+        return 0;
+    }
+    let mut offset = offset.min(total.saturating_sub(1));
+    if selected < offset {
+        offset = selected;
+    } else if selected >= offset + height {
+        offset = selected + 1 - height;
+    }
+    offset.min(total.saturating_sub(height.min(total)))
+}
+
+/// Hard-wrap `line` into chunks of at most `width` characters. An empty line
+/// yields one empty chunk so blank lines survive wrapping.
+pub fn wrap_text_line(line: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    if line.is_empty() {
+        return vec![String::new()];
+    }
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for ch in line.chars() {
+        if current.chars().count() >= width {
+            chunks.push(current);
+            current = String::new();
+        }
+        current.push(ch);
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
+/// Split `line` into spans, rendering case-insensitive `needle` matches in
+/// reverse video. Falls back to a single unhighlighted span when the needle is
+/// empty or when lowercasing shifts byte offsets (multi-byte text).
+pub fn highlight_line(line: &str, needle: Option<&str>, text_color: Color) -> Line<'static> {
+    let base = Style::default().fg(text_color);
+    let Some(needle) = needle.map(str::trim).filter(|needle| !needle.is_empty()) else {
+        return Line::from(Span::styled(line.to_string(), base));
+    };
+    let lower_line = line.to_lowercase();
+    let lower_needle = needle.to_lowercase();
+    let mut spans = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(found) = lower_line[cursor..].find(&lower_needle) {
+        let start = cursor + found;
+        let end = start + lower_needle.len();
+        if !line.is_char_boundary(start) || !line.is_char_boundary(end) || end > line.len() {
+            return Line::from(Span::styled(line.to_string(), base));
+        }
+        if start > cursor {
+            spans.push(Span::styled(line[cursor..start].to_string(), base));
+        }
+        spans.push(Span::styled(
+            line[start..end].to_string(),
+            base.add_modifier(Modifier::REVERSED),
+        ));
+        cursor = end;
+    }
+    if cursor < line.len() {
+        spans.push(Span::styled(line[cursor..].to_string(), base));
+    }
+    if spans.is_empty() {
+        return Line::from(Span::styled(line.to_string(), base));
+    }
+    Line::from(spans)
+}
+
 /// Convert HSL (`hue` in `0..=360`, `sat`/`light` in `0.0..=1.0`) to an RGB
 /// [`Color`], or `None` when `hue` is out of range.
 pub fn hsl_to_rgb(hue: f32, sat: f32, light: f32) -> Option<Color> {
@@ -171,6 +258,40 @@ mod tests {
         assert_eq!(collapse_home("/home/x", "/home/x"), "~");
         assert_eq!(collapse_home("/other", "/home/x"), "/other");
         assert_eq!(collapse_home("/home/x/p", ""), "/home/x/p");
+    }
+
+    #[test]
+    fn window_offset_follows_selection() {
+        assert_eq!(list_window_offset(0, 0, 10, 100), 0);
+        assert_eq!(list_window_offset(15, 0, 10, 100), 6);
+        assert_eq!(list_window_offset(3, 6, 10, 100), 3);
+        assert_eq!(list_window_offset(0, 0, 0, 0), 0);
+        // window never scrolls past the end when items fit
+        assert_eq!(list_window_offset(2, 0, 10, 3), 0);
+    }
+
+    #[test]
+    fn highlight_marks_every_match() {
+        let line = highlight_line("the Rate limiter rate", Some("rate"), Color::Black);
+        let reversed: Vec<String> = line
+            .spans
+            .iter()
+            .filter(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .map(|span| span.content.to_string())
+            .collect();
+        assert_eq!(reversed, vec!["Rate", "rate"]);
+    }
+
+    #[test]
+    fn highlight_survives_multibyte_without_panicking() {
+        let _ = highlight_line("préfix — ünïcode", Some("é"), Color::Black);
+        let _ = highlight_line("emoji 🎉 test", Some("test"), Color::Black);
+    }
+
+    #[test]
+    fn wraps_lines_and_keeps_blank_lines() {
+        assert_eq!(wrap_text_line("abcdef", 3), vec!["abc", "def"]);
+        assert_eq!(wrap_text_line("", 5), vec![String::new()]);
     }
 
     #[test]

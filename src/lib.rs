@@ -18,6 +18,7 @@ use tui_input::Input;
 
 pub mod config;
 pub mod keymap;
+pub mod layout;
 pub mod process;
 pub mod search;
 pub mod text;
