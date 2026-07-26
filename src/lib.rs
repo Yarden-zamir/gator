@@ -1,4 +1,12 @@
-use std::{env, error::Error, fs, io, path::Path, process::Command};
+//! Shared TUI and tooling primitives for the gator app family.
+//!
+//! `gator` holds only generic infrastructure — terminal setup, selection
+//! output, clipboard, subprocess helpers, fuzzy matching, theming, config
+//! loading, keybindings, and small TUI helpers. Domain behavior (git, GitHub,
+//! project navigation, issue exploration, session sources) lives in the
+//! implementation crates.
+
+use std::{env, error::Error, fs, io, process::Command};
 
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
@@ -7,6 +15,19 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tui_input::Input;
+
+pub mod config;
+pub mod keymap;
+pub mod process;
+pub mod search;
+pub mod text;
+pub mod theme;
+pub mod xdg;
+
+// Backward-compatible flat re-exports of the most-used helpers.
+pub use process::run_command_output;
+pub use search::fuzzy_match;
+pub use text::truncate_with_ellipsis;
 
 pub type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -73,46 +94,6 @@ pub fn input_at_end(input: &Input) -> bool {
     input.cursor() >= input.value().chars().count()
 }
 
-pub fn truncate_with_ellipsis(value: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    let count = value.chars().count();
-    if count <= max {
-        return value.to_string();
-    }
-    if max <= 1 {
-        return value.chars().take(max).collect();
-    }
-    let trimmed = value.chars().take(max - 1).collect::<String>();
-    format!("{trimmed}…")
-}
-
-pub fn run_command_output(
-    program: &str,
-    args: &[String],
-    current_dir: Option<&Path>,
-) -> Option<String> {
-    let mut cmd = Command::new(program);
-    cmd.args(args);
-    if let Some(dir) = current_dir {
-        cmd.current_dir(dir);
-    }
-    let output = cmd.output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout)
-        .trim_end()
-        .to_string();
-    if stdout.is_empty() {
-        None
-    } else {
-        Some(stdout)
-    }
-}
-
 pub fn copy_to_clipboard(value: &str) -> AppResult<()> {
     #[cfg(target_os = "macos")]
     {
@@ -135,26 +116,4 @@ pub fn copy_to_clipboard(value: &str) -> AppResult<()> {
         let _ = value;
         Err("clipboard copy is only implemented for macOS".into())
     }
-}
-
-pub fn fuzzy_match(query: &str, text: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-    let mut query_chars = query.chars().filter(|c| !c.is_whitespace());
-    let mut current = query_chars.next();
-    if current.is_none() {
-        return true;
-    }
-    for ch in text.chars() {
-        if let Some(expected) = current {
-            if expected.eq_ignore_ascii_case(&ch) {
-                current = query_chars.next();
-                if current.is_none() {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
