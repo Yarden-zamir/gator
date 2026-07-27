@@ -6,7 +6,7 @@
 //! project navigation, issue exploration, session sources) lives in the
 //! implementation crates.
 
-use std::{env, error::Error, fs, io, process::Command};
+use std::{env, error::Error, fs, io};
 
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
@@ -98,7 +98,11 @@ pub fn input_at_end(input: &Input) -> bool {
 pub fn copy_to_clipboard(value: &str) -> AppResult<()> {
     #[cfg(target_os = "macos")]
     {
-        use std::{io::Write, process::Stdio};
+        // Imported here so the non-macOS build does not see them as unused.
+        use std::{
+            io::Write,
+            process::{Command, Stdio},
+        };
 
         let mut child = Command::new("pbcopy").stdin(Stdio::piped()).spawn()?;
         let Some(stdin) = child.stdin.as_mut() else {
